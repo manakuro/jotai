@@ -30,3 +30,11 @@ export const itSkipIfVersionedWrite =
 
 export const StrictModeUnlessVersionedWrite =
   process.env.PROVIDER_MODE === 'VERSIONED_WRITE' ? Fragment : StrictMode
+
+const originalProcessNextTick = process.nextTick
+/**
+ * Capture the original process.nextTick before calling jest.useFakeTimers() so that React or other process can correctly flush the promises during executing.
+ * @see https://gist.github.com/apieceofbart/e6dea8d884d29cf88cdb54ef14ddbcc4
+ */
+export const flushPromises = () =>
+  new Promise((resolve) => originalProcessNextTick(resolve))

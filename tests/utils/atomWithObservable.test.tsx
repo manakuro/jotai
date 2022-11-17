@@ -11,7 +11,7 @@ import {
   useSetAtom,
 } from 'jotai'
 import { atomWithObservable } from 'jotai/utils'
-import { getTestProvider } from '../testUtils'
+import { flushPromises, getTestProvider } from '../testUtils'
 
 const Provider = getTestProvider()
 
@@ -21,14 +21,6 @@ const useRetryFromError = (scope?: symbol | string | number) => {
   const { r: retryFromError } = useContext(ScopeContext)
   return retryFromError || ((fn) => fn())
 }
-
-beforeEach(() => {
-  jest.useFakeTimers()
-})
-afterEach(() => {
-  jest.runAllTimers()
-  jest.useRealTimers()
-})
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -142,45 +134,56 @@ it('writable count state without initial value', async () => {
   await findByText('count: 3')
 })
 
-it('writable count state with delayed value', async () => {
-  const subject = new Subject<number>()
-  const observableAtom = atomWithObservable(() => {
-    const observable = of(1).pipe(delay(10 * 1000))
-    observable.subscribe((n) => subject.next(n))
-    return subject
+describe('writable count state with delayed value', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+  afterEach(() => {
+    jest.runAllTimers()
+    jest.useRealTimers()
   })
 
-  const Counter = () => {
-    const [state, dispatch] = useAtom(observableAtom)
-    return (
-      <>
-        count: {state}
-        <button
-          onClick={() => {
-            dispatch(9)
-          }}>
-          button
-        </button>
-      </>
+  it('should write count state after delayed.', async () => {
+    const subject = new Subject<number>()
+    const observableAtom = atomWithObservable(() => {
+      const observable = of(1).pipe(delay(10 * 1000))
+      observable.subscribe((n) => subject.next(n))
+      return subject
+    })
+
+    const Counter = () => {
+      const [state, dispatch] = useAtom(observableAtom)
+      return (
+        <>
+          count: {state}
+          <button
+            onClick={() => {
+              dispatch(9)
+            }}>
+            button
+          </button>
+        </>
+      )
+    }
+
+    const { findByText, getByText } = render(
+      <StrictMode>
+        <Provider>
+          <Suspense fallback="loading">
+            <Counter />
+          </Suspense>
+        </Provider>
+      </StrictMode>
     )
-  }
 
-  const { findByText, getByText } = render(
-    <StrictMode>
-      <Provider>
-        <Suspense fallback="loading">
-          <Counter />
-        </Suspense>
-      </Provider>
-    </StrictMode>
-  )
+    await findByText('loading')
+    jest.runOnlyPendingTimers()
+    await flushPromises()
+    await findByText('count: 1')
 
-  await findByText('loading')
-  jest.runOnlyPendingTimers()
-  await findByText('count: 1')
-
-  fireEvent.click(getByText('button'))
-  await findByText('count: 9')
+    fireEvent.click(getByText('button'))
+    await findByText('count: 9')
+  })
 })
 
 it('only subscribe once per atom', async () => {
